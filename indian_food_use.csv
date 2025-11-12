@@ -1,0 +1,256 @@
+name,diet,state
+Balu shahi,vegetarian,West Bengal
+Gulab jamun,vegetarian,West Bengal
+Imarti,vegetarian,West Bengal
+Kalakand,vegetarian,West Bengal
+Cham cham,vegetarian,West Bengal
+Ledikeni,vegetarian,West Bengal
+Mihidana,vegetarian,West Bengal
+Misti doi,vegetarian,West Bengal
+Pantua,vegetarian,West Bengal
+Ras malai,vegetarian,West Bengal
+Rasgulla,vegetarian,West Bengal
+Sandesh,vegetarian,West Bengal
+Adhirasam,vegetarian,West Bengal
+Chicken razala,non vegetarian,West Bengal
+Daal puri,vegetarian,West Bengal
+Cheera Doi,vegetarian,West Bengal
+Luchi,vegetarian,West Bengal
+Chingri malai curry,non vegetarian,West Bengal
+Goja,vegetarian,West Bengal
+Chingri Bhape,non vegetarian,West Bengal
+Kabiraji,non vegetarian,West Bengal
+Mishti Chholar Dal,vegetarian,West Bengal
+Prawn malai curry,non vegetarian,West Bengal
+Shukto,vegetarian,West Bengal
+Singori,vegetarian,Uttarakhand
+Jalebi,vegetarian,Uttar Pradesh
+Petha,vegetarian,Uttar Pradesh
+Rabri,vegetarian,Uttar Pradesh
+Sohan halwa,vegetarian,Uttar Pradesh
+Kachori,vegetarian,Uttar Pradesh
+Kofta,vegetarian,Uttar Pradesh
+Lauki ke kofte,vegetarian,Uttar Pradesh
+Navrattan korma,vegetarian,Uttar Pradesh
+Panjeeri,vegetarian,Uttar Pradesh
+Pork Bharta,non vegetarian,Tripura
+Double ka meetha,vegetarian,Telangana
+Qubani ka meetha,vegetarian,Telangana
+Sheer korma,vegetarian,Telangana
+Biryani,non vegetarian,Telangana
+Shahi tukra,vegetarian,Telangana
+Pongal,vegetarian,Tamil Nadu
+Unni Appam,vegetarian,Tamil Nadu
+Currivepillai sadam ,vegetarian,Tamil Nadu
+Idiappam,vegetarian,Tamil Nadu
+Kaara kozhambu,vegetarian,Tamil Nadu
+Keerai kootu,vegetarian,Tamil Nadu
+Keerai masiyal,vegetarian,Tamil Nadu
+Keerai sadam,vegetarian,Tamil Nadu
+Keerai poriyal,vegetarian,Tamil Nadu
+Kootu,vegetarian,Tamil Nadu
+Kos kootu,vegetarian,Tamil Nadu
+Kothamali sadam,vegetarian,Tamil Nadu
+Kuzhakkattai,vegetarian,Tamil Nadu
+Kuzhambu,vegetarian,Tamil Nadu
+Paniyaram,vegetarian,Tamil Nadu
+Paruppu sadam,vegetarian,Tamil Nadu
+Poriyal,vegetarian,Tamil Nadu
+Puli sadam,vegetarian,Tamil Nadu
+Thayir sadam,vegetarian,Tamil Nadu
+Chicken Varuval,non vegetarian,Tamil Nadu
+Boondi,vegetarian,Rajasthan
+Ghevar,vegetarian,Rajasthan
+Daal baati churma,vegetarian,Rajasthan
+Pattor,vegetarian,Rajasthan
+Gatta curry,vegetarian,Rajasthan
+Churma Ladoo,vegetarian,Rajasthan
+Gajar ka halwa,vegetarian,Punjab
+Lassi,vegetarian,Punjab
+Aloo gobi,vegetarian,Punjab
+Aloo tikki,vegetarian,Punjab
+Aloo matar,vegetarian,Punjab
+Aloo methi,vegetarian,Punjab
+Aloo shimla mirch,vegetarian,Punjab
+Bhatura,vegetarian,Punjab
+Bhindi masala,vegetarian,Punjab
+Chana masala,vegetarian,Punjab
+Chicken Tikka masala,non vegetarian,Punjab
+Chicken Tikka,non vegetarian,Punjab
+Chole bhature,vegetarian,Punjab
+Dal makhani ,vegetarian,Punjab
+Dal tadka,vegetarian,Punjab
+Kadai paneer,vegetarian,Punjab
+Karela bharta,vegetarian,Punjab
+Makki di roti sarson da saag,vegetarian,Punjab
+Misi roti,vegetarian,Punjab
+Mushroom do pyaza,vegetarian,Punjab
+Mushroom matar,vegetarian,Punjab
+Naan,vegetarian,Punjab
+Palak paneer,vegetarian,Punjab
+Paneer butter masala,vegetarian,Punjab
+Paneer tikka masala,vegetarian,Punjab
+Paratha,vegetarian,Punjab
+Pindi chana,vegetarian,Punjab
+Rongi,vegetarian,Punjab
+Shahi paneer,vegetarian,Punjab
+Vegetable jalfrezi,vegetarian,Punjab
+Tandoori Chicken,non vegetarian,Punjab
+Tandoori Fish Tikka,non vegetarian,Punjab
+Phirni,vegetarian,Odisha
+Chhena jalebi,vegetarian,Odisha
+Chhena kheeri,vegetarian,Odisha
+Chhena poda,vegetarian,Odisha
+Kheer sagar,vegetarian,Odisha
+Rasabali,vegetarian,Odisha
+Pakhala,vegetarian,Odisha
+Butter chicken,non vegetarian,NCT of Delhi
+Galho,non vegetarian,Nagaland
+Chak Hao Kheer,vegetarian,Manipur
+Black rice,non vegetarian,Manipur
+Sheera,vegetarian,Maharashtra
+Sohan papdi,vegetarian,Maharashtra
+Chikki,vegetarian,Maharashtra
+Anarsa,vegetarian,Maharashtra
+Dhondas,vegetarian,Maharashtra
+Mahim halwa,vegetarian,Maharashtra
+Modak,vegetarian,Maharashtra
+Shankarpali,vegetarian,Maharashtra
+Shrikhand,vegetarian,Maharashtra
+Sutar feni,vegetarian,Maharashtra
+Chapati,vegetarian,Maharashtra
+Poha,vegetarian,Maharashtra
+Amti,vegetarian,Maharashtra
+Zunka,vegetarian,Maharashtra
+Kolim Jawla,non vegetarian,Maharashtra
+Coconut vadi,vegetarian,Maharashtra
+Bhakri,vegetarian,Maharashtra
+Bombil fry,non vegetarian,Maharashtra
+Chakali,vegetarian,Maharashtra
+Dahi vada,vegetarian,Maharashtra
+Dalithoy,vegetarian,Maharashtra
+Kombdi vade,vegetarian,Maharashtra
+Koshimbir,vegetarian,Maharashtra
+Pav Bhaji,vegetarian,Maharashtra
+Puri Bhaji,vegetarian,Maharashtra
+Sabudana Khichadi,vegetarian,Maharashtra
+Sukhdi,vegetarian,Maharashtra
+Surnoli,vegetarian,Maharashtra
+Thalipeeth,vegetarian,Maharashtra
+Veg Kolhapuri,vegetarian,Maharashtra
+Laapsi,vegetarian,Madhya Pradesh
+Mawa Bati,vegetarian,Madhya Pradesh
+Kuzhi paniyaram,vegetarian,Kerala
+Avial,vegetarian,Kerala
+Kanji,vegetarian,Kerala
+Beef Fry,non vegetarian,Kerala
+Papadum,vegetarian,Kerala
+Paravannam,vegetarian,Kerala
+Puttu,vegetarian,Kerala
+Theeyal,vegetarian,Kerala
+Dharwad pedha,vegetarian,Karnataka
+Mysore pak,vegetarian,Karnataka
+Obbattu holige,vegetarian,Karnataka
+Bisi bele bath,vegetarian,Karnataka
+Koshambri,vegetarian,Karnataka
+Sandige,vegetarian,Karnataka
+Dum aloo,vegetarian,Jammu & Kashmir
+Shufta,vegetarian,Jammu & Kashmir
+Kadhi pakoda,vegetarian,Haryana
+Basundi,vegetarian,Gujarat
+Doodhpak,vegetarian,Gujarat
+Saath,vegetarian,Gujarat
+Bajri no rotlo,vegetarian,Gujarat
+Chevdo,vegetarian,Gujarat
+Chorafali,vegetarian,Gujarat
+Copra paak,vegetarian,Gujarat
+Daal Dhokli,vegetarian,Gujarat
+Kutchi dabeli,vegetarian,Gujarat
+Dhokla,vegetarian,Gujarat
+Dudhi halwa,vegetarian,Gujarat
+Gud papdi,vegetarian,Gujarat
+Ghooghra,vegetarian,Gujarat
+Handwo,vegetarian,Gujarat
+Halvasan,vegetarian,Gujarat
+Jeera Aloo,vegetarian,Gujarat
+Kansar,vegetarian,Gujarat
+Keri no ras,vegetarian,Gujarat
+Khakhra,vegetarian,Gujarat
+Khandvi,vegetarian,Gujarat
+Methi na Gota,vegetarian,Gujarat
+Mohanthal,vegetarian,Gujarat
+Muthiya,vegetarian,Gujarat
+Patra,vegetarian,Gujarat
+Sev khamani,vegetarian,Gujarat
+Sev tameta,vegetarian,Gujarat
+Namakpara,vegetarian,Gujarat
+Undhiyu,vegetarian,Gujarat
+Lilva Kachori,vegetarian,Gujarat
+Mag Dhokli,vegetarian,Gujarat
+Khichu,vegetarian,Gujarat
+Thepla,vegetarian,Gujarat
+Farsi Puri,vegetarian,Gujarat
+Khaman,vegetarian,Gujarat
+Turiya Patra Vatana sabji,vegetarian,Gujarat
+Vindaloo,non vegetarian,Goa
+Bebinca,vegetarian,Goa
+Pinaca,vegetarian,Goa
+Fara,vegetarian,Chhattisgarh
+Malapua,vegetarian,Bihar
+Litti chokha,vegetarian,Bihar
+Sattu ki roti,vegetarian,Bihar
+Lyangcha,vegetarian,Assam
+Pithe,vegetarian,Assam
+Maach Jhol,non vegetarian,Assam
+Gheela Pitha,vegetarian,Assam
+Khar,vegetarian,Assam
+Kumol Sawul,non vegetarian,Assam
+Alu Pitika,non vegetarian,Assam
+Masor tenga,non vegetarian,Assam
+Bengena Pitika,vegetarian,Assam
+Bilahi Maas,non vegetarian,Assam
+Bora Sawul,vegetarian,Assam
+Hando Guri,vegetarian,Assam
+Haq Maas,non vegetarian,Assam
+Khorisa,vegetarian,Assam
+Koldil Chicken,non vegetarian,Assam
+Konir Dom,non vegetarian,Assam
+Koldil Duck,non vegetarian,Assam
+Masor Koni,non vegetarian,Assam
+Pani Pitha,vegetarian,Assam
+Payokh,vegetarian,Assam
+Til Pitha,vegetarian,Assam
+Ariselu,vegetarian,Andhra Pradesh
+Bandar laddu,vegetarian,Andhra Pradesh
+Gavvalu,vegetarian,Andhra Pradesh
+Kakinada khaja,vegetarian,Andhra Pradesh
+Palathalikalu,vegetarian,Andhra Pradesh
+Poornalu,vegetarian,Andhra Pradesh
+Pootharekulu,vegetarian,Andhra Pradesh
+Kajjikaya,vegetarian,Andhra Pradesh
+Attu,vegetarian,Andhra Pradesh
+Pesarattu,vegetarian,Andhra Pradesh
+Kaju katli,vegetarian,-1
+Kheer,vegetarian,-1
+Laddu,vegetarian,-1
+Nankhatai,vegetarian,-1
+Khichdi,vegetarian,-1
+Kulfi falooda,vegetarian,-1
+Lauki ki subji,vegetarian,-1
+Pani puri,vegetarian,-1
+Papad,vegetarian,-1
+Rajma chaval,vegetarian,-1
+Samosa,vegetarian,-1
+Dosa,vegetarian,-1
+Idli,vegetarian,-1
+Masala Dosa,vegetarian,-1
+Pachadi,vegetarian,-1
+Payasam,vegetarian,-1
+Rasam,vegetarian,-1
+Sambar,vegetarian,-1
+Sevai,vegetarian,-1
+Uttapam,vegetarian,-1
+Vada,vegetarian,-1
+Upma,vegetarian,-1
+Brown Rice,vegetarian,-1
+Red Rice,vegetarian,-1
