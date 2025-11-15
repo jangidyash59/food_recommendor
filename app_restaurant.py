@@ -499,5 +499,5 @@ else:
                             st.success(msg + ":")
                             st.dataframe(df_out.reset_index(drop=True))
                         else:
-                            # --- 6. Error Message ---
+                            # --- 6. Error Message --
                             st.warning(f"😥 No related items found for '{item.title()}' after filtering.")
