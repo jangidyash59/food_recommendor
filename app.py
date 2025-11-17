@@ -1,503 +1,910 @@
-import streamlit as st
-import pandas as pd
-import glob, os, re
-from mlxtend.frequent_patterns import fpgrowth, association_rules
-from mlxtend.preprocessing import TransactionEncoder
+import glob
+import os
+import re
 import warnings
+from io import BytesIO
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import pandas as pd
+import streamlit as st
+from mlxtend.frequent_patterns import association_rules, fpgrowth
+from mlxtend.preprocessing import TransactionEncoder
+from PIL import Image, ImageDraw, ImageFont
+
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# -------------------- PAGE CONFIG --------------------
-st.set_page_config(page_title="Indian Food Recommender", page_icon="🍴", layout="centered")
+# ---------------------------------------------------------------------
+# Page config + global styles
+# ---------------------------------------------------------------------
+st.set_page_config(
+    page_title="Indian Food Recommender",
+    page_icon="🍴",
+    layout="wide",
+)
 
-# --- Custom CSS for Styling (Points 1, 2, 3, 8) ---
-st.markdown("""
+GLOBAL_CSS = """
 <style>
-/* --- 1. Custom Title Gradient --- */
-div[data-testid="stAppViewContainer"] > section > div[data-testid="stVerticalBlock"] > div:first-child {
-    background: linear-gradient(90deg, #004d99, #66b3ff);
-    padding: 10px;
-    border-radius: 5px;
-    margin-bottom: 20px;
-}
-div[data-testid="stAppViewContainer"] h1 {
-    color: white; /* Make title text white */
-}
-div[data-testid="stAppViewContainer"] .stCaption {
-    color: white !important; /* Make caption text white */
-    opacity: 0.9;
+:root {
+    --primary-blue: #0a4d68;
+    --accent-peach: #f7a76c;
+    --bg-mint: #f2fbf9;
+    --card-shadow: 0 18px 40px rgba(15, 40, 81, 0.08);
+    --table-zebra: #fef8f3;
 }
 
-/* --- 8. Table Styling (Headers, Zebra, Hover) --- */
-div[data-testid="stDataFrame"] a[class^="col_heading"] {
-    color: #004d99; /* Prominent header color */
-    font-weight: bold;
-    font-size: 1.1em;
-}
-div[data-testid="stDataFrame"] div[class^="row"]:nth-child(even) {
-    background-color: #f5faff; /* Zebra striping - light blue */
-}
-div[data-testid="stDataFrame"] div[class^="row"]:hover {
-    background-color: #e6f7ff; /* Lighter blue on hover */
-    cursor: default;
+body {
+    font-family: "Segoe UI", sans-serif;
+    background: var(--bg-mint);
 }
 
-/* --- 3. Spacing Between Sections --- */
-.stSubheader {
-    margin-top: 30px; /* Add space above subheaders */
-    margin-bottom: 10px;
+.block-container {
+    padding-top: 1.5rem;
 }
-div[data-testid="stRadio"] {
-    margin-bottom: 30px; /* Add space after radio buttons */
+
+.metric-card {
+    background: white;
+    padding: 1.25rem 1.5rem;
+    border-radius: 18px;
+    box-shadow: var(--card-shadow);
 }
-div[data-testid="stHorizontalBlock"] {
-    margin-bottom: 20px; /* Add space between form elements */
+
+div[data-testid="stMarkdownContainer"] h2 {
+    font-weight: 700;
+    color: var(--primary-blue);
+}
+
+/* Table polishing */
+div[data-testid="stDataFrame"] table {
+    border-spacing: 0 !important;
+    width: 100%;
+}
+
+div[data-testid="stDataFrame"] th {
+    background-color: #e8f2ff !important;
+    font-weight: 700 !important;
+    color: #073763 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+div[data-testid="stDataFrame"] tbody tr:nth-child(even) {
+    background-color: #351f57 !important;
+    color: #ffffff !important;
+}
+
+div[data-testid="stDataFrame"] tbody tr:nth-child(odd) {
+    background-color: #4a2a78 !important;
+    color: #ffffff !important;
+}
+
+div[data-testid="stDataFrame"] tbody tr:hover {
+    background-color: #5c3591 !important;
+    transition: background 0.2s ease-in-out;
+}
+
+div[data-testid="stDataFrame"] td {
+    border-bottom: 1px solid #edf0f7 !important;
+    font-size: 0.95rem;
+    color: #ffffff !important;
+}
+
+/* Streamlit tab styling */
+button[data-baseweb="tab"] {
+    font-weight: 600;
+}
+
+.hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    box-shadow: var(--card-shadow);
+}
+
+.info-chip {
+    background: rgba(10, 77, 104, 0.08);
+    padding: 0.4rem 0.75rem;
+    border-radius: 10px;
+    font-size: 0.9rem;
+}
+
+.hero-title {
+    font-family: "Playfair Display", "Times New Roman", serif;
+    font-size: 3rem;
+    font-weight: 600;
+    color: var(--primary-blue);
+    margin-bottom: 0.5rem;
 }
 </style>
-""", unsafe_allow_html=True)
+"""
+
+st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------
+@st.cache_data(show_spinner=False)
+def load_data() -> Tuple[pd.DataFrame, Dict[str, pd.DataFrame], List[str], Dict[str, str]]:
+    try:
+        food_df = pd.read_csv(
+            "indian_food.csv",
+            header=None,
+            names=["name", "diet", "state"],
+        )
+    except FileNotFoundError:
+        st.error("`indian_food.csv` missing. Please add it to the project directory.")
+        return pd.DataFrame(), {}, [], {}
+
+    food_df.columns = food_df.columns.str.strip().str.lower()
+    food_df["name_norm"] = food_df["name"].astype(str).str.strip().str.lower()
+    food_df["state_norm"] = (
+        food_df["state"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .str.replace(" ", "_")
+    )
+    food_df["diet"] = (
+        food_df["diet"]
+        .fillna("Unknown")
+        .astype(str)
+        .str.strip()
+        .str.title()
+    )
+
+    restaurant_files = [
+        f
+        for f in glob.glob("*.csv")
+        if os.path.basename(f).lower() not in {"indian_food.csv", "national_transactions.csv"}
+    ]
+
+    restaurants: Dict[str, pd.DataFrame] = {}
+    prefixes: set[str] = set()
+    file_pattern = re.compile(r"(.+)_restaurant_#\d", re.IGNORECASE)
+
+    for file_path in sorted(restaurant_files):
+        file_name = os.path.splitext(os.path.basename(file_path))[0]
+        match = file_pattern.match(file_name.lower())
+        if not match:
+            continue
+
+        state_prefix = match.group(1)
+        prefixes.add(state_prefix)
+        try:
+            df = pd.read_csv(file_path)
+            df.columns = df.columns.str.strip().str.lower()
+            if "transaction_items" not in df.columns:
+                st.warning(f"Skipping '{file_name}': `transaction_items` column missing.")
+                continue
+            df["transaction_items"] = df["transaction_items"].astype(str)
+            restaurants[file_name.lower()] = df
+        except Exception as exc:  # pragma: no cover - defensive messaging
+            st.warning(f"Unable to load '{file_name}': {exc}")
+
+    prefix_list = sorted(prefixes)
+    display_map = {p: p.replace("_", " ").title() for p in prefix_list}
+    return food_df, restaurants, prefix_list, display_map
 
 
-st.title("🍴 Statewise Restaurant Food Recommender System")
-st.caption("Restaurant-level FP-Growth with Top Picks & Per-Restaurant Recommendations")
+food_df, restaurants, available_state_prefixes, display_map = load_data()
+
+if not restaurants:
+    st.stop()
+
+# ---------------------------------------------------------------------
+# Helper utilities
+# ---------------------------------------------------------------------
+def parse_transaction_items(transaction: str) -> List[str]:
+    cleaned = str(transaction).strip().strip('"')
+    return [chunk.strip().lower() for chunk in cleaned.split(",") if chunk.strip()]
 
 
-# -------------------- SIDEBAR SETTINGS --------------------
-st.sidebar.header("Analysis Settings")
-# --- 5. FP-Growth Tooltip ---
+def restaurants_by_state(prefix: str) -> List[str]:
+    return [name for name in restaurants.keys() if name.startswith(prefix.lower())]
+
+
+def item_order_count(df: pd.DataFrame, item: str) -> int:
+    return sum(item in parse_transaction_items(txn) for txn in df["transaction_items"])
+
+
+def top_items_in_restaurant(df: pd.DataFrame, top_n: int = 10) -> List[Tuple[str, int]]:
+    counter: Dict[str, int] = {}
+    for txn in df["transaction_items"]:
+        for item in parse_transaction_items(txn):
+            counter[item] = counter.get(item, 0) + 1
+    return sorted(counter.items(), key=lambda kv: kv[1], reverse=True)[:top_n]
+
+
+def run_fp_growth(df: pd.DataFrame, support: float) -> pd.DataFrame:
+    transactions = [parse_transaction_items(txn) for txn in df["transaction_items"]]
+    if not transactions:
+        return pd.DataFrame()
+
+    te = TransactionEncoder()
+    encoded = te.fit(transactions).transform(transactions)
+    encoded_df = pd.DataFrame(encoded, columns=te.columns_)
+    freq_items = fpgrowth(encoded_df, min_support=support, use_colnames=True)
+    if freq_items.empty:
+        return pd.DataFrame()
+    return association_rules(freq_items, metric="confidence", min_threshold=0.05)
+
+
+def auto_select_state_for_dish(dish: str) -> Tuple[Optional[str], Dict[str, int]]:
+    if not dish:
+        return None, {}
+    dish = dish.lower()
+    counts: Dict[str, int] = {}
+    for prefix in available_state_prefixes:
+        total = 0
+        for rest_key in restaurants_by_state(prefix):
+            total += item_order_count(restaurants[rest_key], dish)
+        counts[prefix] = total
+    if not counts or max(counts.values()) == 0:
+        return None, counts
+    best = max(counts, key=counts.get)
+    return best, counts
+
+
+def summarize_restaurant_orders(state_prefix: str, dish: str) -> List[Dict[str, int]]:
+    rows = []
+    for rest_key in restaurants_by_state(state_prefix):
+        df = restaurants[rest_key]
+        count = item_order_count(df, dish)
+        rows.append(
+            {
+                "key": rest_key,
+                "Restaurant": rest_key.replace("_", " ").title(),
+                "Orders": count,
+            }
+        )
+    rows.sort(key=lambda row: row["Orders"], reverse=True)
+    return rows
+
+
+def build_pairing_table(
+    rest_key: str,
+    focus_item: str,
+    diet_filter: str,
+    state_prefix: str,
+    support: float,
+) -> Tuple[pd.DataFrame, str]:
+    rdf = restaurants[rest_key]
+    rules = run_fp_growth(rdf, support)
+    if rules.empty:
+        return pd.DataFrame(), f"No frequent itemsets at support={support:.3f}."
+
+    focus_item = focus_item.lower()
+
+    def contains_focus(items: List[str]) -> bool:
+        return focus_item in [it.lower() for it in items]
+
+    mask = rules.apply(
+        lambda row: contains_focus(list(row["antecedents"]))
+        or contains_focus(list(row["consequents"])),
+        axis=1,
+    )
+    matched = rules[mask]
+    if matched.empty:
+        return pd.DataFrame(), "No rule contains the selected dish. Try lowering support."
+
+    local_top = {item for item, _ in top_items_in_restaurant(rdf, top_n=3)}
+    state_top: set[str] = set()
+    for rest in restaurants_by_state(state_prefix):
+        state_top.update(item for item, _ in top_items_in_restaurant(restaurants[rest], top_n=5))
+
+    suggestions: set[str] = set()
+    for _, row in matched.iterrows():
+        for bucket in ("antecedents", "consequents"):
+            for candidate in row[bucket]:
+                candidate = candidate.lower()
+                if candidate != focus_item:
+                    suggestions.add(candidate)
+
+    data_rows = []
+    for suggestion in suggestions:
+        orders = item_order_count(rdf, suggestion)
+        if orders <= 0:
+            continue
+        meta = food_df[food_df["name_norm"] == suggestion]
+        diet = meta["diet"].iloc[0] if not meta.empty else "Unknown"
+        origin = meta["state"].iloc[0].title() if not meta.empty else "Unknown"
+        marker = ""
+        if suggestion in local_top:
+            marker += "🔹 "
+        if suggestion in state_top:
+            marker += "🔸 "
+        data_rows.append(
+            {
+                "Dish": f"{marker}{suggestion.title()}".strip(),
+                "Diet": diet,
+                "State of Origin": origin,
+                "Orders": orders,
+            }
+        )
+
+    if not data_rows:
+        return pd.DataFrame(), "No matching orders after filtering."
+
+    result = pd.DataFrame(data_rows).sort_values("Orders", ascending=False)
+    if diet_filter.lower() != "both":
+        result = result[result["Diet"].str.lower() == diet_filter.lower()]
+        result = result.drop(columns=["Diet"], errors="ignore")
+
+    return result.reset_index(drop=True), ""
+
+
+def aggregate_state_top_picks(state_prefix: str, diet_filter: str) -> Tuple[pd.DataFrame, Dict[str, str]]:
+    state_items = food_df[food_df["state_norm"] == state_prefix]["name_norm"].tolist()
+    total_counts: Dict[str, int] = {}
+    per_item_restaurant: Dict[str, Dict[str, int]] = {}
+
+    for rest_key in restaurants_by_state(state_prefix):
+        df = restaurants[rest_key]
+        for txn in df["transaction_items"]:
+            for item in parse_transaction_items(txn):
+                if item not in state_items:
+                    continue
+                if diet_filter.lower() != "both":
+                    diet = food_df.loc[food_df["name_norm"] == item, "diet"]
+                    if not diet.empty and diet.iloc[0].lower() != diet_filter.lower():
+                        continue
+                total_counts[item] = total_counts.get(item, 0) + 1
+                per_item_restaurant.setdefault(item, {})
+                per_item_restaurant[item][rest_key] = per_item_restaurant[item].get(rest_key, 0) + 1
+
+    top_items = sorted(total_counts.items(), key=lambda kv: kv[1], reverse=True)[:10]
+    rows = []
+    best_restaurant_for_item: Dict[str, str] = {}
+    for rank, (item, total) in enumerate(top_items):
+        meta = food_df[food_df["name_norm"] == item]
+        diet = meta["diet"].iloc[0] if not meta.empty else "Unknown"
+        rest_counts = per_item_restaurant.get(item, {})
+        best_rest = max(rest_counts.items(), key=lambda kv: kv[1])[0] if rest_counts else "unknown"
+        best_restaurant_for_item[item] = best_rest
+        rows.append(
+            {
+                "Dish": f"{'🔸 ' if rank < 5 else ''}{item.title()}".strip(),
+                "Diet": diet,
+                "Top Restaurant": best_rest.replace("_", " ").title(),
+                "Total Orders": total,
+            }
+        )
+
+    df_top = pd.DataFrame(rows)
+    if not df_top.empty:
+        df_top = df_top.dropna(how="all").reset_index(drop=True)
+    return df_top, best_restaurant_for_item
+
+
+def styled_dataframe(
+    df: pd.DataFrame,
+    caption: str,
+    column_config: Dict | None = None,
+    height: int | None = None,
+):
+    if df.empty:
+        st.info("No rows to display.")
+        return
+    display_df = df.copy()
+    st.caption(caption)
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        height=height,
+        column_config=column_config or {},
+    )
+
+
+def _load_font(preferred: Sequence[str], size: int) -> ImageFont.ImageFont:
+    for font_name in preferred:
+        try:
+            return ImageFont.truetype(font_name, size)
+        except IOError:
+            continue
+    return ImageFont.load_default()
+
+
+def _font_height(font: ImageFont.ImageFont) -> int:
+    bbox = font.getbbox("Hg")
+    return bbox[3] - bbox[1]
+
+
+def build_table_snapshot(
+    title: str,
+    metadata: Sequence[Tuple[str, str]],
+    df: pd.DataFrame,
+) -> bytes:
+    df_str = df.fillna("").astype(str)
+    rows: List[List[str]] = [df_str.columns.tolist()] + df_str.values.tolist()
+    meta_lines = [f"{label}: {value}" for label, value in metadata if value]
+
+    title_font = _load_font(["PlayfairDisplay-Regular.ttf", "arial.ttf"], 70)
+    body_font = _load_font(["arial.ttf"], 36)
+    table_font = _load_font(["arial.ttf", "Consolas.ttf"], 30)
+
+    padding_x = 30
+    padding_y = 18
+    border = 3
+
+    # Determine column widths based on text measurements
+    col_count = len(rows[0])
+    col_widths: List[int] = [0] * col_count
+    dummy_img = Image.new("RGB", (10, 10))
+    dummy_draw = ImageDraw.Draw(dummy_img)
+    for col_idx in range(col_count):
+        max_width = 0
+        for row in rows:
+            text = str(row[col_idx])
+            bbox = table_font.getbbox(text) if text else table_font.getbbox(" ")
+            width = bbox[2] - bbox[0]
+            max_width = max(max_width, width)
+        col_widths[col_idx] = max_width + padding_x * 2
+
+    row_height = (_font_height(table_font)) + padding_y * 2
+    table_width = sum(col_widths) + border * (col_count + 1)
+    table_height = len(rows) * row_height + border * (len(rows) + 1)
+
+    margin = 80
+    width = max(1400, table_width + margin * 2)
+    base_height = (
+        margin
+        + _font_height(title_font)
+        + 25
+        + _font_height(body_font)
+        + 20
+        + len(meta_lines) * (_font_height(body_font) + 10)
+        + 40
+        + table_height
+        + margin
+    )
+    height = max(base_height, 900)
+
+    bg = (10, 77, 104)
+    panel = (4, 33, 50)
+    accent = (247, 167, 108)
+    header_fill = (14, 64, 92)
+    row_fill_even = (6, 27, 44)
+    row_fill_odd = (8, 36, 56)
+
+    image = Image.new("RGB", (width, height), color=bg)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle(
+        [margin // 2, margin // 2, width - margin // 2, height - margin // 2],
+        fill=panel,
+        outline=accent,
+        width=4,
+    )
+
+    cursor_y = margin
+    cursor_x = (width - table_width) // 2
+    draw.text((cursor_x, cursor_y), title, fill=accent, font=title_font)
+    cursor_y += _font_height(title_font) + 15
+    draw.text((cursor_x, cursor_y), "Food Recommender Snapshot", fill=(230, 230, 230), font=body_font)
+    cursor_y += _font_height(body_font) + 15
+
+    for line in meta_lines:
+        draw.text((cursor_x, cursor_y), line, fill=(255, 255, 255), font=body_font)
+        cursor_y += _font_height(body_font) + 10
+
+    cursor_y += 20
+    table_top = cursor_y
+    draw.rectangle(
+        [cursor_x, table_top, cursor_x + table_width, table_top + table_height],
+        outline=accent,
+        width=border,
+    )
+
+    y_cursor = table_top + border
+    for row_idx, row in enumerate(rows):
+        x_cursor = cursor_x + border
+        is_header = row_idx == 0
+        row_fill = header_fill if is_header else (row_fill_even if row_idx % 2 == 0 else row_fill_odd)
+        stroke_color = accent if is_header else (255, 255, 255)
+
+        for col_idx, value in enumerate(row):
+            cell_width = col_widths[col_idx]
+            cell_height = row_height
+            draw.rectangle(
+                [x_cursor, y_cursor, x_cursor + cell_width, y_cursor + cell_height],
+                fill=row_fill,
+                outline=stroke_color,
+                width=border,
+            )
+
+            text = str(value)
+            bbox = table_font.getbbox(text) if text else table_font.getbbox(" ")
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            text_x = x_cursor + (cell_width - text_width) / 2
+            text_y = y_cursor + (cell_height - text_height) / 2
+            draw.text((text_x, text_y), text, fill=(255, 255, 255), font=table_font)
+
+            x_cursor += cell_width + border
+        y_cursor += row_height + border
+
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def share_to_social_media(
+    snapshot_title: str,
+    metadata: Sequence[Tuple[str, str]],
+    df: pd.DataFrame,
+    filename_slug: str,
+    key: str,
+) -> None:
+    if df.empty:
+        return
+    
+    image_bytes = build_table_snapshot(snapshot_title, metadata, df)
+    safe_slug = filename_slug.replace(" ", "_").lower()
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        text = f"Check out these food recommendations!"
+        whatsapp_url = f"https://wa.me/?text={text}"
+        st.markdown(
+            f'<a href="{whatsapp_url}" target="_blank" style="text-decoration: none;">'
+            f'<button style="background-color: #25D366; color: white; border: none; padding: 10px 20px; '
+            f'border-radius: 5px; cursor: pointer; font-size: 16px;">📱 WhatsApp</button></a>',
+            unsafe_allow_html=True
+        )
+    
+    with col2:
+        st.download_button(
+            "💾 Download Image",
+            data=image_bytes,
+            file_name=f"{safe_slug}.png",
+            mime="image/png",
+            key=f"{key}_dl",
+        )
+    
+    with col3:
+        if st.button("📋 Copy Link", key=f"{key}_link"):
+            st.code(f"https://food-recommender.app/{safe_slug}", language=None)
+    
+    with col4:
+        csv = df.to_csv(index=False)
+        st.download_button(
+            "📊 Download CSV",
+            data=csv,
+            file_name=f"{safe_slug}.csv",
+            mime="text/csv",
+            key=f"{key}_csv_dl",
+        )
+
+
+def explanation_block(title: str, steps: List[str]) -> None:
+    with st.expander(title):
+        for idx, step in enumerate(steps, start=1):
+            st.markdown(f"**Step {idx}.** {step}")
+
+
+def render_hero() -> None:
+    st.markdown('<div class="hero-title">Food Recommender</div>', unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------
+# Sidebar controls
+# ---------------------------------------------------------------------
+st.sidebar.header("Playground Dials")
 min_support = st.sidebar.slider(
-    "Select Minimum Support",
+    "Magic mix frequency (support)",
     min_value=0.001,
     max_value=0.1,
     value=0.01,
     step=0.001,
     format="%.3f",
-    help="FP-Growth 'Minimum Support' transaction ka woh percentage hai jismein itemset ka milna zaroori hai. "
-         "Kam value (e.g., 0.001) se zyada patterns milenge. "
-         "Zyada value (e.g., 0.05) se sirf strong patterns milenge."
+    help=(
+        "Lower values surface hidden pairings; higher values keep only the crowd favourites."
+    ),
 )
+st.sidebar.metric("Loaded restaurants", len(restaurants))
 
-# -------------------- LOAD DATA --------------------
-@st.cache_data
-def load_data():
-    try:
-        # --- FIX for KeyError: 'name' ---
-        # Add header=None and manually name the columns
-        column_names = ['name', 'diet', 'state']
-        food_df = pd.read_csv("indian_food.csv", header=None, names=column_names)
-        # --- END FIX ---
-        
-    except FileNotFoundError:
-        st.error("Error: `indian_food.csv` not found. Please add it to the directory.")
-        return pd.DataFrame(), {}, set()
-        
-    food_df.columns = food_df.columns.str.strip().str.lower()
-    food_df["name_norm"] = food_df["name"].astype(str).str.strip().str.lower()
-    food_df["state_norm"] = food_df["state"].astype(str).str.strip().str.lower().str.replace(" ", "_")
+with st.sidebar.expander("ℹ️ Secret Spice File (i)"):
+    st.markdown(
+        "We curate orders from every restaurant, let the FP-Growth treasure hunt spot dishes "
+        "that travel together, and then badge the hottest combos so you can act fast without "
+        "wading through raw data."
+    )
 
-    restaurant_files = sorted(glob.glob("*.csv"))
-    exclude = {"indian_food.csv", "national_transactions.csv"}
-    restaurant_files = [f for f in restaurant_files if os.path.basename(f) not in exclude]
+# Reset session state if user changes key controls
+st.session_state.setdefault("food_result", {})
+st.session_state.setdefault("food_pairs", {})
+st.session_state.setdefault("state_pairs", {})
 
-    restaurants = {}
-    available_state_prefixes = set()
-    
-    file_pattern = re.compile(r'(.+)_Restaurant_#\d', re.IGNORECASE)
-
-    for f in restaurant_files:
-        key = os.path.splitext(os.path.basename(f))[0].strip()
-        key_lower = key.lower()
-        match = file_pattern.match(key_lower)
-        
-        if match:
-            state_prefix = match.group(1)
-            available_state_prefixes.add(state_prefix)
-            
-            try:
-                df = pd.read_csv(f)
-                df.columns = df.columns.str.strip().str.lower()
-                if "transaction_items" not in df.columns:
-                    st.warning(f"Skipping '{f}': No 'transaction_items' column.")
-                    continue
-                df["transaction_items"] = df["transaction_items"].astype(str)
-                restaurants[key_lower] = df.copy()
-            except Exception as e:
-                st.warning(f"Error loading '{f}': {e}")
-
-    return food_df, restaurants, sorted(list(available_state_prefixes))
+# ---------------------------------------------------------------------
+# Hero + tabs
+# ---------------------------------------------------------------------
+render_hero()
+tab_food, tab_state = st.tabs(["🍽️ Food Recommendation", "🌟 Discover Top Picks"])
 
 
-food_df, restaurants, available_state_prefixes = load_data()
+# ---------------------------------------------------------------------
+# Tab 1 - Food recommendation
+# ---------------------------------------------------------------------
+with tab_food:
+    st.subheader("Find the best restaurant for your craving")
 
-if not restaurants:
-    st.error("No restaurant transaction files found. Please add files in the format 'State_Name_Restaurant_#1.csv'.")
-else:
-    st.info(f"✅ Loaded food metadata ({food_df.shape[0]} rows) and {len(restaurants)} restaurant datasets.")
-
-
-# -------------------- HELPERS --------------------
-def parse_txn_items(t: str):
-    t_cleaned = str(t).strip().strip('"')
-    return [item.strip().lower() for item in t_cleaned.split(',') if item.strip()]
-
-def get_item_count(df: pd.DataFrame, item: str):
-    item = item.strip().lower()
-    return sum(item in parse_txn_items(t) for t in df["transaction_items"].astype(str))
-
-def top_items_in_restaurant(df: pd.DataFrame, top_n=10):
-    counter = {}
-    for t in df["transaction_items"].astype(str):
-        for i in parse_txn_items(t):
-            counter[i] = counter.get(i, 0) + 1
-    return sorted(counter.items(), key=lambda x: x[1], reverse=True)[:top_n]
-
-def run_fpgrowth(df: pd.DataFrame, support: float):
-    txns = [parse_txn_items(t) for t in df["transaction_items"].astype(str)]
-    if not txns:
-        return pd.DataFrame()
-    try:
-        te = TransactionEncoder()
-        te_ary = te.fit(txns).transform(txns)
-        df_enc = pd.DataFrame(te_ary, columns=te.columns_)
-        
-        freq_items = fpgrowth(df_enc, min_support=support, use_colnames=True)
-        
-        if freq_items.empty:
-            return pd.DataFrame()
-            
-        rules = association_rules(freq_items, metric="confidence", min_threshold=0.05)
-        return rules
-    except Exception:
-        return pd.DataFrame()
-
-def restaurants_by_state(state_prefix: str):
-    return [r for r in restaurants.keys() if r.startswith(state_prefix.lower())]
-
-# -------------------- SESSION STATE KEYS --------------------
-if "top2_for_query" not in st.session_state:
-    st.session_state.top2_for_query = None
-if "top2_query_dish" not in st.session_state:
-    st.session_state.top2_query_dish = None
-if "top2_state" not in st.session_state:
-    st.session_state.top2_state = None
-
-# -------------------- UI --------------------
-st.header("🍛 Step 1 • Choose Your Action")
-choice = st.radio("Select an option:", ["🍴 Food Recommendation", "⭐ Top Picks"])
-st.markdown("---") # --- 3. Spacing ---
-
-# -------------------- FOOD RECOMMENDATION --------------------
-if choice == "🍴 Food Recommendation":
-    # --- 4. Catchy Heading ---
-    st.subheader("🚀 Find Your Next Favorite Meal")
-
-    unique_dishes = sorted(food_df["name_norm"].dropna().unique().tolist())
-    unique_dishes_display = [name.title() for name in unique_dishes]
-
-    food_input = st.selectbox(
-        "Enter or Select a Dish Name:",
-        options=[""] + unique_dishes_display,
+    dishes = sorted(food_df["name_norm"].dropna().unique())
+    dish_labels = [""] + [dish.title() for dish in dishes]
+    selected_dish_label = st.selectbox(
+        "Dish name",
+        options=dish_labels,
         index=0,
-        help="Start typing to search for a dish"
-    ).strip()
+        help="Start typing to search quickly.",
+    )
+    diet_filter_food = st.selectbox(
+        "Diet preference",
+        ["Both", "Vegetarian", "Non Vegetarian"],
+        help="Filters only kick in for the final recommendation table.",
+    )
 
-    diet_choice = st.selectbox("Filter by Diet Type:", ["Both", "Vegetarian", "Non Vegetarian"])
+    normalized_dish = selected_dish_label.lower()
+    normalized_dish = normalized_dish.strip()
 
-    if not available_state_prefixes:
-        st.warning("No restaurant data files found.")
-    else:
-        state_display_map = {p: p.replace("_", " ").title() for p in available_state_prefixes}
-
-        default_index = 0
-        if food_input:
-            item = food_input.lower()
-            state_counts = {}
-            for prefix in available_state_prefixes:
-                total = 0
-                for rest in restaurants_by_state(prefix):
-                    total += get_item_count(restaurants[rest], item)
-                state_counts[prefix] = total
-
-            if any(state_counts.values()):
-                max_prefix = max(state_counts, key=state_counts.get)
-                default_index = available_state_prefixes.index(max_prefix)
-                st.info(
-                    f"✅ Auto-selected state: **{state_display_map[max_prefix]}** — most transactions found for '{food_input.title()}'."
-                )
-            else:
-                st.warning(f"No transactions found for '{food_input.title()}' in any state.")
-
-        state_choice_prefix = st.selectbox(
-            "Select State:",
-            available_state_prefixes,
-            index=default_index,
-            format_func=lambda x: state_display_map[x]
+    auto_state, _ = auto_select_state_for_dish(normalized_dish)
+    if normalized_dish and auto_state:
+        st.info(
+            f"Auto-suggested state: **{display_map[auto_state]}** "
+            "because it records the highest order volume for this dish."
         )
-        state_choice = state_display_map[state_choice_prefix]
 
-        if st.button("🔍 Find Top Restaurants"):
-            state_restaurants = restaurants_by_state(state_choice_prefix)
-            rest_counts = [(r, get_item_count(restaurants[r], food_input)) for r in state_restaurants]
+    state_index = (
+        available_state_prefixes.index(auto_state)
+        if auto_state in available_state_prefixes
+        else 0
+    )
+    chosen_state_prefix = st.selectbox(
+        "State focus",
+        available_state_prefixes,
+        index=state_index if available_state_prefixes else 0,
+        format_func=lambda key: display_map.get(key, key),
+    )
 
-            total_txns = sum(count for _, count in rest_counts)
-            if total_txns == 0:
-                st.warning(f"No transactions found for '{food_input.title()}' in {state_choice}.")
-                st.session_state.top2_for_query = None
-                st.session_state.top2_query_dish = None
-                st.session_state.top2_state = None
-            else:
-                sorted_counts = sorted(rest_counts, key=lambda x: x[1], reverse=True)
-                top2_names = [r[0] for r in sorted_counts[:2]]
-                unified_table = []
-                for name, count in sorted_counts:
-                    # --- 2. Marker Change ---
-                    star = "🏆" if name in top2_names else ""
-                    display_name = name.replace('_', ' ').title()
-                    # --- 7. Transaction Numbers ---
-                    unified_table.append({"Restaurant": f"{display_name} {star}".strip(), "Orders": count})
-
-                st.success(f"📊 Item count & 🏆 Top Restaurants for '{food_input.title()}' in {state_choice}:")
-                st.dataframe(pd.DataFrame(unified_table))
-
-                top2 = [r for r in sorted_counts[:2] if r[1] > 0]
-                st.session_state.top2_for_query = top2
-                st.session_state.top2_query_dish = food_input.lower()
-                st.session_state.top2_state = state_choice_prefix
-
-        st.write("") # --- 3. Spacing ---
-        
-        if st.session_state.top2_for_query:
-            top2 = st.session_state.top2_for_query
-            choice_map = {r[0]: r[0].replace('_', ' ').title() for r in top2}
-            choice_list = list(choice_map.keys())
-            
-            restaurant_choice_key = st.selectbox(
-                "Select a 🏆 Restaurant for Detailed Recommendations:",
-                choice_list,
-                format_func=lambda x: choice_map[x]
-            )
-            restaurant_choice_display = choice_map[restaurant_choice_key]
-
-            if restaurant_choice_key and st.session_state.top2_query_dish:
-                rdf = restaurants[restaurant_choice_key]
-                
-                # Run FP-Growth ONCE with the slider value
-                rules = run_fpgrowth(rdf, support=min_support)
-
-                if rules.empty:
-                    # --- 6. Error Message ---
-                    st.warning(f"😥 No frequent combinations found in {restaurant_choice_display} at {min_support:.3f} support. Sidebar se support value kam karke try karein.")
-                else:
-                    item = st.session_state.top2_query_dish
-                    mask = rules.apply(
-                        lambda row: item in [i.lower() for i in list(row["antecedents"])]
-                                    or item in [i.lower() for i in list(row["consequents"])],
-                        axis=1
-                    )
-                    matched = rules[mask]
-
-                    if matched.empty:
-                        # --- 6. Error Message ---
-                        st.warning(f"😥 No specific combinations found for '{item.title()}' in {restaurant_choice_display} at this support level. Try a different dish or lower support.")
-                    else:
-                        state_prefix = st.session_state.top2_state
-                        state_restaurants = restaurants_by_state(state_prefix)
-                        top_rest3 = [i[0] for i in top_items_in_restaurant(rdf, top_n=3)]
-                        state_top5 = set()
-                        for r in state_restaurants:
-                            state_top5.update([i[0] for i in top_items_in_restaurant(restaurants[r], top_n=5)])
-
-                        suggestions = set()
-                        for _, rrow in matched.iterrows():
-                            for it in list(rrow["antecedents"]) + list(rrow["consequents"]):
-                                if it.lower() != item:
-                                    suggestions.add(it.lower())
-
-                        rows = []
-                        for s in suggestions:
-                            cnt = get_item_count(rdf, s)
-                            if cnt <= 0:
-                                continue
-                            meta = food_df[food_df["name_norm"] == s]
-                            diet = meta["diet"].iloc[0].title() if not meta.empty else "Unknown"
-                            origin = meta["state"].iloc[0].title() if not meta.empty else "Unknown"
-                            
-                            # --- 2. Marker Change ---
-                            marker = ""
-                            if s in top_rest3:
-                                marker += "🔹" # Blue Diamond
-                            if s in state_top5:
-                                marker += "🔸" # Orange Diamond
-                                
-                            rows.append({
-                                "Dish": f"{marker} {s.title()}",
-                                "Diet": diet,
-                                "State of Origin": origin,
-                                # --- 7. Transaction Numbers ---
-                                "Orders": cnt
-                            })
-                            
-                        if rows:
-                            df_out = pd.DataFrame(rows).sort_values(by="Orders", ascending=False).head(10)
-                            if diet_choice.lower() != "both":
-                                df_out = df_out[df_out["Diet"].str.lower() == diet_choice.lower()]
-                                df_out = df_out.drop(columns=["Diet"], errors="ignore")
-                            st.success(f"🍽️ Recommendations for '{item.title()}' in {restaurant_choice_display}:")
-                            st.dataframe(df_out.reset_index(drop=True))
-                        else:
-                            # --- 6. Error Message ---
-                            st.warning(f"😥 No related items found for '{item.title()}' after filtering.")
-
-        # legend
-        st.markdown("---")
-        st.markdown("**Legend:**")
-        st.markdown("- 🏆 **Trophy** = Top 2 restaurant for the chosen dish.")
-        st.markdown("- 🔹 **Blue Diamond** = Top 3 item in the selected restaurant.")
-        st.markdown("- 🔸 **Orange Diamond** = Top 5 item across all restaurants in the state.")
-
-# -------------------- TOP PICKS SECTION --------------------
-else:
-    # --- 4. Catchy Heading ---
-    st.subheader("🌟 Discover Top Picks by State")
-    diet_choice = st.selectbox("Filter by Diet Type:", ["Both", "Vegetarian", "Non Vegetarian"])
-
-    if not available_state_prefixes:
-        st.warning("No restaurant data files found. Please check your CSV files.")
-    else:
-        state_display_map = {p: p.replace("_", " ").title() for p in available_state_prefixes}
-        state_choice_prefix = st.selectbox("Select State:", available_state_prefixes, format_func=lambda x: state_display_map[x])
-        state_choice = state_display_map[state_choice_prefix]
-
-        state_restaurants = restaurants_by_state(state_choice_prefix)
-        state_items = food_df[food_df["state_norm"] == state_choice_prefix]["name_norm"].tolist()
-
-        total_counts = {}
-        per_item_rest_counts = {}
-        for rest in state_restaurants:
-            if rest not in restaurants: continue
-            df = restaurants[rest]
-            for t in df["transaction_items"].astype(str):
-                for i in parse_txn_items(t):
-                    if i not in state_items:
-                        continue
-                    if diet_choice.lower() != "both":
-                        d = food_df.loc[food_df["name_norm"] == i, "diet"]
-                        if not d.empty and d.iloc[0].lower() != diet_choice.lower():
-                            continue
-                    total_counts[i] = total_counts.get(i, 0) + 1
-                    per_item_rest_counts.setdefault(i, {})
-                    per_item_rest_counts[i][rest] = per_item_rest_counts[i].get(rest, 0) + 1
-
-        if not total_counts:
-            st.warning(f"No state-origin items found in transactions for {state_choice} matching the diet filter.")
+    if st.button("Show top restaurants", type="primary", disabled=not normalized_dish):
+        if not normalized_dish:
+            st.warning("Please select a dish first.")
         else:
-            best_rest_for_item = {i: max(r.items(), key=lambda x: x[1])[0] for i, r in per_item_rest_counts.items()}
-            top_items = sorted(total_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-            rows = []
-            for rank, (item, total_cnt) in enumerate(top_items):
-                meta = food_df[food_df["name_norm"] == item]
-                diet = meta["diet"].iloc[0].title() if not meta.empty else "Unknown"
-                rest_key = best_rest_for_item.get(item, "Unknown")
-                rest_display = rest_key.replace('_', ' ').title()
-                # --- 2. Marker Change ---
-                marker = "🔸" if rank < 5 else ""
-                rows.append({
-                    "Dish": f"{marker} {item.title()}",
-                    "Diet": diet,
-                    "Top Restaurant": rest_display,
-                    # --- 7. Transaction Numbers ---
-                    "Total Orders": total_cnt
-                })
-            df_top = pd.DataFrame(rows).sort_values(by="Total Orders", ascending=False).reset_index(drop=True)
-            st.success(f"🔝 Top Picks in {state_choice}:")
-            st.dataframe(df_top)
-            
-            st.markdown("---") # --- 3. Spacing ---
-            st.subheader("Get Recommendations from a Top Pick")
+            summary = summarize_restaurant_orders(chosen_state_prefix, normalized_dish)
+            st.session_state.food_result = {
+                "dish": normalized_dish,
+                "state": chosen_state_prefix,
+                "state_label": display_map.get(chosen_state_prefix, chosen_state_prefix),
+                "rows": summary,
+            }
+            st.session_state.food_pairs = {}
 
-            chosen_item = st.selectbox("Select a Dish from Top Picks for Recommendations:", df_top["Dish"])
-            # --- 2. Marker Change ---
-            raw_item = chosen_item.lstrip("🔸🔹 ").lower()
-            default_rest = best_rest_for_item.get(raw_item, state_restaurants[0])
-            try:
-                default_index = state_restaurants.index(default_rest)
-            except ValueError:
-                default_index = 0
+    if st.session_state.food_result.get("rows"):
+        rows = st.session_state.food_result["rows"]
+        df_summary = pd.DataFrame(
+            [
+                {
+                    "Restaurant": f"{row['Restaurant']} {'🏆' if idx < 2 else ''}".strip(),
+                    "Orders": row["Orders"],
+                }
+                for idx, row in enumerate(rows)
+            ]
+        )
+        styled_dataframe(
+            df_summary,
+            caption="Click column headers to sort. Trophy marks the top 2 performers.",
+            column_config={
+                "Orders": st.column_config.NumberColumn("Orders", format="%d"),
+            },
+            height=min(400, 80 + 32 * len(df_summary)),
+        )
+        share_to_social_media(
+            "Food Recommender",
+            [
+                ("Dish name", st.session_state.food_result.get("dish", "").title()),
+                ("Diet preference", diet_filter_food),
+                ("State focus", st.session_state.food_result.get("state_label", "")),
+            ],
+            df_summary,
+            filename_slug="best_restaurant_for_my_craving",
+            key="food_leaderboard_snapshot",
+        )
+
+        eligible_restaurants = [row["key"] for row in rows if row["Orders"] > 0][:5]
+        if eligible_restaurants:
+            rest_choice = st.selectbox(
+                "Dive deeper into a restaurant",
+                eligible_restaurants,
+                format_func=lambda key: key.replace("_", " ").title(),
+            )
+            if st.button("Generate pairings", key="food_pairs_btn"):
+                table, error = build_pairing_table(
+                    rest_key=rest_choice,
+                    focus_item=st.session_state.food_result["dish"],
+                    diet_filter=diet_filter_food,
+                    state_prefix=st.session_state.food_result["state"],
+                    support=min_support,
+                )
+                st.session_state.food_pairs = {
+                    "table": table,
+                    "error": error,
+                    "meta": {
+                        "restaurant": rest_choice.replace("_", " ").title(),
+                        "dish": st.session_state.food_result["dish"].title(),
+                        "diet": diet_filter_food,
+                        "state": st.session_state.food_result.get("state_label", ""),
+                    },
+                }
+
+        if st.session_state.food_pairs.get("error"):
+            st.warning(st.session_state.food_pairs["error"])
+        elif isinstance(st.session_state.food_pairs.get("table"), pd.DataFrame):
+            table = st.session_state.food_pairs["table"]
+            styled_dataframe(
+                table,
+                caption="🔹 = top-3 item inside the restaurant, 🔸 = top-5 across the state.",
+                column_config={
+                    "Orders": st.column_config.NumberColumn("Orders", format="%d"),
+                },
+                height=min(500, 80 + 36 * len(table)),
+            )
+            meta = st.session_state.food_pairs.get("meta", {})
+            share_to_social_media(
+                "Food Recommender",
+                [
+                    ("Restaurant", meta.get("restaurant", "")),
+                    ("Dish name", meta.get("dish", "")),
+                    ("Diet preference", meta.get("diet", "")),
+                    ("State of Origin", meta.get("state", "")),
+                ],
+                table,
+                filename_slug="best_combos_for_my_craving",
+                key="food_pairings_snapshot",
+            )
+
+    explanation_block(
+        "Explain this page:",
+        [
+            "We standardize the dish and state names so every comparison is apples-to-apples.",
+            "For a chosen dish we count its orders across every state to auto-suggest where it sells best.",
+            "We show a sortable ranking of restaurants by the actual number of orders for that dish.",
+            "FP-Growth runs on the selected restaurant’s basket data to expose dishes that co-occur with the focus dish.",
+            "Visual markers describe whether a suggested dish is locally or state-wise popular.",
+        ],
+    )
+
+
+# ---------------------------------------------------------------------
+# Tab 2 - Discover Top Picks
+# ---------------------------------------------------------------------
+with tab_state:
+    st.subheader("📍 Food Map of India")
+
+    diet_filter_state = st.selectbox(
+        "Diet preference (state view)",
+        ["Both", "Vegetarian", "Non Vegetarian"],
+    )
+    chosen_state_for_top = st.selectbox(
+        "Which state's heritage dishes?",
+        available_state_prefixes,
+        format_func=lambda key: display_map.get(key, key),
+        key="state_selector",
+    )
+
+    df_top, best_rest_map = aggregate_state_top_picks(chosen_state_for_top, diet_filter_state)
+    if df_top.empty:
+        st.warning("No state-origin dishes found in the selected files. Please try another state.")
+    else:
+        
+        df_top_display = df_top.copy()
+        if diet_filter_state.lower() != "both" and "Diet" in df_top_display.columns:
+            df_top_display = df_top_display.drop(columns=["Diet"])
+        styled_dataframe(
+            df_top_display,
+            caption="🔸 marks the overall state favourites. Click a column header to sort.",
+            column_config={
+                "Total Orders": st.column_config.NumberColumn("Total Orders", format="%d"),
+            },
+            height=min(420, 80 + 34 * len(df_top_display)),
+        )
+        share_to_social_media(
+            "Food Recommender",
+            [
+                ("Diet preference", diet_filter_state),
+                ("State focus", display_map.get(chosen_state_for_top, chosen_state_for_top)),
+            ],
+            df_top_display,
+            filename_slug="food_map_of_india",
+            key="state_map_snapshot",
+        )
+
+        state_restaurants = restaurants_by_state(chosen_state_for_top)
+        if not state_restaurants:
+            st.warning("No restaurant files available for this state.")
+        else:
+            st.markdown("---")
+            st.subheader("Get Recommendations from a Top Pick")
+            selected_top_pick = st.selectbox(
+                "Pick a dish to derive recommendations",
+                df_top_display["Dish"].tolist(),
+            )
+            raw_item = selected_top_pick.replace("🔸", "").strip().lower()
             
-            rest_choice_map = {r: r.replace('_', ' ').title() for r in state_restaurants}
+            diet_filter_pick = st.selectbox(
+                "Diet preference",
+                ["Both", "Vegetarian", "Non Vegetarian"],
+                key="diet_filter_pick",
+            )
             
-            restaurant_choice_key = st.selectbox(
-                "Select a Restaurant:",
+            default_rest_key = best_rest_map.get(raw_item, state_restaurants[0])
+            default_index = (
+                state_restaurants.index(default_rest_key)
+                if default_rest_key in state_restaurants
+                else 0
+            )
+            rest_choice_state = st.selectbox(
+                "Restaurant to analyse",
                 state_restaurants,
                 index=default_index,
-                format_func=lambda x: rest_choice_map[x]
+                format_func=lambda key: key.replace("_", " ").title(),
+                key="state_rest_selector",
             )
-            restaurant_choice_display = rest_choice_map[restaurant_choice_key]
 
-            if st.button("🍽️ Get Recommendations from Top Pick"):
-                rdf = restaurants[restaurant_choice_key]
+            if st.button("Generate state pairings", key="state_pairs_btn"):
+                table, error = build_pairing_table(
+                    rest_key=rest_choice_state,
+                    focus_item=raw_item,
+                    diet_filter=diet_filter_pick,
+                    state_prefix=chosen_state_for_top,
+                    support=min_support,
+                )
+                st.session_state.state_pairs = {
+                    "table": table,
+                    "error": error,
+                    "meta": {
+                        "restaurant": rest_choice_state.replace("_", " ").title(),
+                        "diet": diet_filter_pick,
+                        "state": display_map.get(chosen_state_for_top, chosen_state_for_top),
+                    },
+                }
 
-                # Run FP-Growth ONCE with the slider value
-                rules = run_fpgrowth(rdf, support=min_support)
-                used_support = min_support
+            if st.session_state.state_pairs.get("error"):
+                st.warning(st.session_state.state_pairs["error"])
+            elif isinstance(st.session_state.state_pairs.get("table"), pd.DataFrame):
+                table = st.session_state.state_pairs["table"]
+                styled_dataframe(
+                    table,
+                    caption="Recommendations derived from FP-Growth on the selected restaurant.",
+                    column_config={
+                        "Orders": st.column_config.NumberColumn("Orders", format="%d"),
+                    },
+                    height=min(500, 80 + 36 * len(table)),
+                )
+                meta = st.session_state.state_pairs.get("meta", {})
+                share_to_social_media(
+                    "Food Recommender",
+                    [
+                        ("Restaurant", meta.get("restaurant", "")),
+                        ("Diet preference", meta.get("diet", "")),
+                        ("State of Origin", meta.get("state", "")),
+                    ],
+                    table,
+                    filename_slug="state_pairings_snapshot",
+                    key="state_pairings_snapshot",
+                )
 
-                if rules.empty:
-                    # --- 6. Error Message ---
-                    st.warning(f"😥 No frequent combinations found in {restaurant_choice_display} at {min_support:.3f} support. Sidebar se support value kam karke try karein.")
-                else:
-                    item = raw_item
-                    mask = rules.apply(
-                        lambda row: item in [i.lower() for i in list(row["antecedents"])]
-                                    or item in [i.lower() for i in list(row["consequents"])],
-                        axis=1
-                    )
-                    matched = rules[mask]
+    explanation_block(
+        "Explain this page:",
+        [
+            "Filter the master catalogue to dishes originally belonging to the chosen state.",
+            "Aggregate their order counts across every restaurant from that state.",
+            "Mark the best restaurant for each dish so tastings can be prioritised.",
+            "Let FP-Growth reuse the same pipeline as Page 1 to surface meaningful pairings.",
+            "All tables are searchable, sortable, zebra-striped, and have hover cues for readability.",
+        ],
+    )
 
-                    if matched.empty:
-                        # --- 6. Error Message ---
-                        st.warning(f"😥 No specific combinations found for '{item.title()}' in {restaurant_choice_display} at this support level.")
-                    else:
-                        top_rest3 = [i[0] for i in top_items_in_restaurant(rdf, top_n=3)]
-                        state_top5 = set()
-                        for r in state_restaurants:
-                            state_top5.update([i[0] for i in top_items_in_restaurant(restaurants[r], top_n=5)])
 
-                        suggestions = set()
-                        for _, rrow in matched.iterrows():
-                            for it in list(rrow["antecedents"]) + list(rrow["consequents"]):
-                                if it.lower() != item:
-                                    suggestions.add(it.lower())
-
-                        rows = []
-                        for s in suggestions:
-                            cnt = get_item_count(rdf, s)
-                            if cnt <= 0:
-                                continue
-                            meta = food_df[food_df["name_norm"] == s]
-                            diet = meta["diet"].iloc[0].title() if not meta.empty else "Unknown"
-                            origin = meta["state"].iloc[0].title() if not meta.empty else "Unknown"
-                            
-                            # --- 2. Marker Change ---
-                            marker = ""
-                            if s in top_rest3:
-                                marker += "🔹" # Blue
-                            if s in state_top5:
-                                marker += "🔸" # Orange
-                                
-                            rows.append({
-                                "Dish": f"{marker} {s.title()}",
-                                "Diet": diet,
-                                "State of Origin": origin,
-                                # --- 7. Transaction Numbers ---
-                                "Orders": cnt
-                            })
-                        if rows:
-                            df_out = pd.DataFrame(rows).sort_values(by="Orders", ascending=False).head(10)
-                            if diet_choice.lower() != "both":
-                                df_out = df_out[df_out["Diet"].str.lower() == diet_choice.lower()]
-                                df_out = df_out.drop(columns=["Diet"], errors="ignore")
-                            
-                            msg = f"🍽️ Recommendations for '{item.title()}' in {restaurant_choice_display} (min_support={used_support:.3f})"
-                            st.success(msg + ":")
-                            st.dataframe(df_out.reset_index(drop=True))
-                        else:
-                            # --- 6. Error Message --
-                            st.warning(f"😥 No related items found for '{item.title()}' after filtering.")
