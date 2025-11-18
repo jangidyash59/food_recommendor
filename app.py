@@ -5,6 +5,13 @@ import warnings
 from io import BytesIO
 from typing import Dict, List, Optional, Sequence, Tuple
 from urllib.parse import quote
+import base64
+
+def load_base64_image(path):
+    with open(path, "rb") as img:
+        return base64.b64encode(img.read()).decode()
+
+title_base64 = load_base64_image("title.png")
 
 import pandas as pd
 import streamlit as st
@@ -13,33 +20,11 @@ from mlxtend.preprocessing import TransactionEncoder
 from PIL import Image, ImageDraw, ImageFont
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-st.markdown(
-    """
-    <!-- Open Graph / Facebook -->
-    <meta property="og:title" content="CraveMap - Indian Food Recommender" />
-    <meta property="og:description" content="Discover crowd-favourite Indian dishes and perfect pairings!" />
-    <meta property="og:image" content="https://raw.githubusercontent.com/jangidyash59/food_recommender/e4646f0e6d71586f8a8d0f48efbbbe4f8f8bd965/logo_full.png" />
-    <meta property="og:image:alt" content="CraveMap logo" />
-    <meta property="og:url" content="https://foodrecommender1.streamlit.app/" />
-    <meta property="og:type" content="website" />
-
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="CraveMap - Indian Food Recommender" />
-    <meta name="twitter:description" content="Explore Indian dishes and their perfect pairings." />
-    <meta name="twitter:image" content="https://raw.githubusercontent.com/jangidyash59/food_recommender/e4646f0e6d71586f8a8d0f48efbbbe4f8f8bd965/logo_full.png" />
-    <meta name="twitter:image:alt" content="CraveMap logo" />
-
-    <!-- Generic image src -->
-    <link rel="image_src" href="https://raw.githubusercontent.com/jangidyash59/food_recommender/e4646f0e6d71586f8a8d0f48efbbbe4f8f8bd965/logo_full.png" />
-    """,
-    unsafe_allow_html=True,
-)
 # ---------------------------------------------------------------------
 # Page config + global styles
 # ---------------------------------------------------------------------
 st.set_page_config(
-    page_title="CraveMap - Indian Food Recommender",
+    page_title="CraveMap - Food Recommender",
     page_icon="🍴CM",
     layout="wide",
 )
@@ -415,7 +400,7 @@ def styled_dataframe(
     st.caption(caption)
     st.dataframe(
         display_df,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         height=height,
         column_config=column_config or {},
@@ -435,7 +420,6 @@ def _font_height(font: ImageFont.ImageFont) -> int:
     bbox = font.getbbox("Hg")
     return bbox[3] - bbox[1]
 
-
 def build_table_snapshot(
     title: str,
     metadata: Sequence[Tuple[str, str]],
@@ -447,11 +431,11 @@ def build_table_snapshot(
 
     title_font = _load_font(["PlayfairDisplay-Regular.ttf", "arial.ttf"], 70)
     body_font = _load_font(["arial.ttf"], 36)
-    table_font = _load_font(["arial.ttf", "Consolas.ttf"], 30)
+    table_font = _load_font(["arial.ttf", "Consolas.ttf"], 28)
 
-    padding_x = 30
-    padding_y = 18
-    border = 3
+    padding_x = 25
+    padding_y = 15
+    border = 2
 
     # Determine column widths based on text measurements
     col_count = len(rows[0])
@@ -472,10 +456,35 @@ def build_table_snapshot(
     table_height = len(rows) * row_height + border * (len(rows) + 1)
 
     margin = 80
-    width = max(1400, table_width + margin * 2)
+    meta_margin_left = margin + 30  # More margin for left-aligned metadata
+    logo_width = 0
+    logo_height = 0
+    logo_img = None
+    if os.path.exists("logo_full.png"):
+        logo_img = Image.open("logo_full.png").convert("RGBA")
+        orig_w, orig_h = logo_img.size
+
+        # Constrain the logo box to the requested bounds while maintaining aspect ratio.
+        # The user wants a box around width:1024, height:1536 and "a little bit large" -> apply a slight upscale.
+        target_box_w = 1024
+        target_box_h = 1536
+        # Compute scale to fit inside the target box while preserving aspect ratio
+        scale = min(target_box_w / orig_w, target_box_h / orig_h)
+        # Make it a little larger (e.g., 15% bigger) but still constrained by the target box
+        upscale_factor = 0.15
+        scale *= upscale_factor
+        # Ensure we don't exceed the target box after upscale
+        scale = min(scale, target_box_w / orig_w, target_box_h / orig_h)
+
+        logo_width = max(1, int(orig_w * scale))
+        logo_height = max(1, int(orig_h * scale))
+        # Resize with high-quality resampling
+        logo_img = logo_img.resize((logo_width, logo_height), Image.Resampling.LANCZOS)
+
+    width = max(1600, table_width + margin * 2)
     base_height = (
         margin
-        + _font_height(title_font)
+        + max(_font_height(title_font), logo_height)
         + 25
         + _font_height(body_font)
         + 20
@@ -484,7 +493,7 @@ def build_table_snapshot(
         + table_height
         + margin
     )
-    height = max(base_height, 900)
+    height = max(base_height, 1000)
 
     bg = (10, 77, 104)
     panel = (4, 33, 50)
@@ -502,28 +511,46 @@ def build_table_snapshot(
         width=4,
     )
 
+    # Place logo at top right, preserving aspect ratio and transparency
     cursor_y = margin
-    cursor_x = (width - table_width) // 2
-    draw.text((cursor_x, cursor_y), title, fill=accent, font=title_font)
+    if logo_img:
+        # Ensure the logo does not overflow the canvas
+        logo_x = max(margin, width - margin - logo_width)
+        image.paste(logo_img, (logo_x, cursor_y), logo_img)
+    # Center the title
+    title_bbox = title_font.getbbox(title)
+    title_width = title_bbox[2] - title_bbox[0]
+    title_x = (width - title_width) // 2
+    draw.text((title_x, cursor_y), title, fill=accent, font=title_font)
     cursor_y += _font_height(title_font) + 15
-    draw.text((cursor_x, cursor_y), "CraveMap Snapshot", fill=(230, 230, 230), font=body_font)
+
+    # Center subtitle
+    subtitle = "CraveMap Snapshot"
+    subtitle_bbox = body_font.getbbox(subtitle)
+    subtitle_width = subtitle_bbox[2] - subtitle_bbox[0]
+    subtitle_x = (width - subtitle_width) // 2
+    draw.text((subtitle_x, cursor_y), subtitle, fill=(230, 230, 230), font=body_font)
     cursor_y += _font_height(body_font) + 15
 
+    # Left-align metadata with more margin
+    meta_y = cursor_y
     for line in meta_lines:
-        draw.text((cursor_x, cursor_y), line, fill=(255, 255, 255), font=body_font)
-        cursor_y += _font_height(body_font) + 10
+        draw.text((meta_margin_left, meta_y), line, fill=(255, 255, 255), font=body_font)
+        meta_y += _font_height(body_font) + 10
 
-    cursor_y += 20
+    cursor_y = meta_y + 20
+    # Center the table
     table_top = cursor_y
+    table_x = (width - table_width) // 2
     draw.rectangle(
-        [cursor_x, table_top, cursor_x + table_width, table_top + table_height],
+        [table_x, table_top, table_x + table_width, table_top + table_height],
         outline=accent,
         width=border,
     )
 
     y_cursor = table_top + border
     for row_idx, row in enumerate(rows):
-        x_cursor = cursor_x + border
+        x_cursor = table_x + border
         is_header = row_idx == 0
         row_fill = header_fill if is_header else (row_fill_even if row_idx % 2 == 0 else row_fill_odd)
         stroke_color = accent if is_header else (255, 255, 255)
@@ -553,7 +580,6 @@ def build_table_snapshot(
     image.save(buffer, format="PNG")
     buffer.seek(0)
     return buffer.getvalue()
-
 
 from urllib.parse import quote
 def df_to_ascii_table(df: pd.DataFrame) -> str:
@@ -610,7 +636,7 @@ def share_to_social_media(
         "⟫⟫ 𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 ✦ 𝐂𝐑𝐀𝐕𝐄𝐌𝐀𝐏 ✦ ⟪⟪\n\n"
         "-> Planning a feast or a family dinner?\n"
         "-> Explore crowd-favourite Indian dishes and their perfect pairings!\n"
-        "-> 𝐅𝐨𝐨𝐝 𝐈𝐧𝐬𝐢𝐠𝐡𝐭𝐬 𝐓𝐚𝐛𝐥𝐞:\n"
+        "-> CraveMap - Food Recommender:\n"
         f"{ascii_table}\n"
         "-> Try the full app here:\n"
         "https://foodrecommender1.streamlit.app/\n"
@@ -667,7 +693,7 @@ def render_hero() -> None:
             st.image("title.png", width=360)
         else:
             st.markdown(
-                '<div class="hero-title">CraveMap - Indian Food Recommender</div>',
+                '<div class="hero-title">CraveMap - Food Recommender</div>',
                 unsafe_allow_html=True,
             )
 
@@ -682,6 +708,7 @@ def render_hero() -> None:
 # Sidebar controls
 # ---------------------------------------------------------------------
 st.sidebar.header("Playground Dials")
+
 min_support = st.sidebar.slider(
     "Magic mix frequency (support)",
     min_value=0.001,
@@ -693,14 +720,45 @@ min_support = st.sidebar.slider(
         "Lower values surface hidden pairings; higher values keep only the crowd favourites."
     ),
 )
+
 st.sidebar.metric("Loaded restaurants", len(restaurants))
 
-with st.sidebar.expander("ℹ️ Secret Spice File (i)"):
+# Reduced vertical margin (smaller gap than before)
+st.sidebar.markdown("<div style='margin-top: -10px;'></div>", unsafe_allow_html=True)
+
+with st.sidebar.expander("👨‍🍳 Behind the Tadka (i)", expanded=False):
     st.markdown(
-        "We curate orders from every restaurant, let the FP-Growth treasure hunt spot dishes "
-        "that travel together, and then badge the hottest combos so you can act fast without "
-        "wading through raw data."
+        """
+        <div style='line-height: 1.50; text-align: justify; font-size: 0.88rem; margin-top: -4px;'>
+        We curate orders from every restaurant, let the <strong>FP-Growth</strong> treasure hunt uncover dishes
+        that often travel together, and then spotlight the <em>hottest food pairings</em> so you can
+        satisfy cravings without digging through raw data.  
+        </div>
+        """,
+        unsafe_allow_html=True
     )
+
+    st.markdown("<hr style='margin: 0.45rem 0;'>", unsafe_allow_html=True)
+
+    st.markdown(
+        """
+        <div style="text-align:center; margin-top:-6px;">
+            <p style="font-size: 0.92rem; margin-bottom: 0.30rem;">
+                Made with <span style="color:#ff6f00;">❤️</span> by
+            </p>
+            <p style="font-size: 1.08rem; font-weight:700; margin-top: 0;">
+                Yash Jangid
+            </p>
+            <p style="font-size: 0.83rem; margin-top: -0.35rem;">
+                <a href="https://github.com/jangidyash59" target="_blank">GitHub</a> •
+                <a href="https://www.linkedin.com/in/yash-jangid-7131162a0/" target="_blank">LinkedIn</a> •
+                <a href="mailto:jangidworld59@gmail.com">Email</a>
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 # Reset session state if user changes key controls
 st.session_state.setdefault("food_result", {})
@@ -789,7 +847,7 @@ with tab_food:
             height=min(400, 80 + 32 * len(df_summary)),
         )
         share_to_social_media(
-            "CraveMap - Indian Food Recommender",
+            "CraveMap - Food Recommender",
             [
                 ("Dish name", st.session_state.food_result.get("dish", "").title()),
                 ("Diet preference", diet_filter_food),
@@ -840,7 +898,7 @@ with tab_food:
             )
             meta = st.session_state.food_pairs.get("meta", {})
             share_to_social_media(
-                "CraveMap - Indian Food Recommender",
+                "CraveMap - Food Recommender",
                 [
                     ("Restaurant", meta.get("restaurant", "")),
                     ("Dish name", meta.get("dish", "")),
@@ -898,10 +956,11 @@ with tab_state:
             height=min(420, 80 + 34 * len(df_top_display)),
         )
         share_to_social_media(
-            "CraveMap - Indian Food Recommender",
+            "CraveMap - Food Recommender",
             [
-                ("Diet preference", diet_filter_state),
                 ("State focus", display_map.get(chosen_state_for_top, chosen_state_for_top)),
+                ("Diet preference", diet_filter_state),
+                
             ],
             df_top_display,
             filename_slug="food_map_of_india",
@@ -972,11 +1031,12 @@ with tab_state:
                 )
                 meta = st.session_state.state_pairs.get("meta", {})
                 share_to_social_media(
-                    "CraveMap - Indian Food Recommender",
+                    "CraveMap - Food Recommender",
                     [
                         ("Restaurant", meta.get("restaurant", "")),
-                        ("Diet preference", meta.get("diet", "")),
                         ("State of Origin", meta.get("state", "")),
+                        ("Diet preference", meta.get("diet", "")),
+                        
                     ],
                     table,
                     filename_slug="state_pairings_snapshot",
@@ -993,5 +1053,46 @@ with tab_state:
             "All tables are searchable, sortable, zebra-striped, and have hover cues for readability.",
         ],
     )
+st.markdown("""
+<style>
+.footer {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    text-align: center;
+    padding: 8px 0;
+    font-size: 13px;
+    color: #d9e6e6;
+    background: linear-gradient(90deg, #050505 0%, #0b1116 50%, #050505 100%);
+    border-top: 1px solid rgba(255,255,255,0.04);
+    box-shadow: 0 -1px 10px rgba(0,0,0,0.65);
+    backdrop-filter: blur(6px) saturate(1.05);
+    z-index: 9999;
+}
+.footer a {
+    color: #f7a76c;
+    text-decoration: none;
+    font-weight: 600;
+}
+.footer a:hover {
+    text-decoration: underline;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+footer_html = f"""
+<div class="footer">
+    <img src="data:image/png;base64,{title_base64}" alt="CraveMap" 
+         style="height: 20px; vertical-align: middle; margin-right: 1px;">
+    is charted with flavour, seasoned with data, and served with ❤️ by 
+    <a href="https://www.linkedin.com/in/yash-jangid-7131162a0/" target="_blank">Yash Jangid</a> · 
+    <a href="mailto:jangidworld59@gmail.com">jangidworld59@gmail.com</a>
+</div>
+"""
+st.markdown(footer_html, unsafe_allow_html=True)
+
+
 
 
