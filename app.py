@@ -22,6 +22,122 @@ st.set_page_config(
     page_icon="🍴CM",
     layout="wide",
 )
+import streamlit as st
+import base64
+
+# ------------ Loading Animation (Splash Screen) ------------
+def local_image_to_base64(image_path):
+    with open(image_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode()
+
+logo_base64 = local_image_to_base64("logo.png")
+
+loader_html = f"""
+<div class="loader-wrapper" id="loader">
+  <div class="loader-backdrop"></div>
+  <div class="loader-content" role="dialog" aria-hidden="false">
+    <img src="data:image/png;base64,{logo_base64}" class="logo-anim" alt="CraveMap logo">
+    <div class="tagline">discover. taste. share.</div>
+  </div>
+</div>
+
+<style>
+  .loader-wrapper {{
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2147483647;
+    pointer-events: auto;
+  }}
+
+  .loader-backdrop {{
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(3px);
+    animation: dimPulse 2.4s ease-in-out;
+  }}
+
+  @keyframes dimPulse {{
+    0%   {{ opacity: 0.35; }}
+    50%  {{ opacity: 0.60; }}
+    100% {{ opacity: 0.35; }}
+  }}
+
+  .loader-content {{
+    position: relative;
+    z-index: 2147483648;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 20px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.03);
+  }}
+
+  .logo-anim {{
+    width: 210px; /* Larger icon */
+    animation: forkSpoonOpen 1.8s ease-in-out infinite,
+               breatheGlow 2.2s ease-in-out infinite;
+    filter: drop-shadow(0 0 9px rgba(255,123,0,0.7));
+    transform-origin: center;
+    position: relative;
+    z-index: 2147483649;
+  }}
+
+  @keyframes forkSpoonOpen {{
+    0%   {{ transform: scale(1.00) rotate(0deg); }}
+    50%  {{ transform: scale(1.06) rotate(3.5deg); }}
+    100% {{ transform: scale(1.00) rotate(0deg); }}
+  }}
+
+  @keyframes breatheGlow {{
+    0%   {{ filter: drop-shadow(0 0 10px rgba(255,140,40,0.55)); }}
+    50%  {{ filter: drop-shadow(0 0 34px rgba(255,90,0,1.0)); }}
+    100% {{ filter: drop-shadow(0 0 10px rgba(255,140,40,0.55)); }}
+  }}
+
+  .tagline {{
+    font-size: 20px;
+    font-weight: 700;
+    color: #ffb86b;
+    font-family: 'Segoe UI', sans-serif;
+    letter-spacing: 0.065em;
+    text-shadow: 0 0 14px rgba(255,140,40,0.92);
+    z-index: 2147483649;
+  }}
+
+  .loader-wrapper.hidden {{
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+  }}
+</style>
+
+<script>
+  (function() {{
+    var loader = document.getElementById('loader');
+    if(!loader) return;
+
+    // Auto hide after 2.4 seconds (under 3 seconds total)
+    setTimeout(function() {{
+      loader.classList.add('hidden');
+      setTimeout(function() {{
+        if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
+      }}, 400);
+    }}, 2400);
+
+    loader.style.zIndex = '2147483647';
+  }})();
+</script>
+"""
+
+st.markdown(loader_html, unsafe_allow_html=True)
 
 GLOBAL_CSS = """
 <style>
